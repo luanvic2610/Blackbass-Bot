@@ -1,6 +1,6 @@
 # chatbot-academia
 
-Chatbot de WhatsApp para academia, construído em **Flask** e integrado à **Evolution API**.
+Chatbot de WhatsApp para academia, construído em **FastAPI** e integrado à **Evolution API**.
 Recebe mensagens via webhook, interpreta a intenção do aluno e responde com grade de
 horários, planos, endereço ou encaminha para um atendente humano.
 
@@ -16,7 +16,7 @@ chatbot-academia/
 ├── .env.example            # template das variáveis de ambiente
 ├── Dockerfile
 ├── docker-compose.yml      # para rodar na VPS
-├── main.py                 # ponto de entrada (cria o app Flask)
+├── main.py                 # ponto de entrada (cria o app FastAPI)
 └── src/
     ├── __init__.py         # factory create_app()
     ├── config.py           # carrega e valida o .env
@@ -56,7 +56,8 @@ curl http://localhost:5000/health
 
 ## Configuração da Evolution API
 
-1. Suba a Evolution API e crie uma instância (ex: `blackbass`).
+1. Suba a Evolution API e crie uma instância (ex: `blackbass`) — veja a seção de
+   deploy abaixo se for usar o `docker-compose.yml` deste projeto.
 2. Preencha no `.env`:
 
 | Variável | Descrição |
@@ -82,7 +83,10 @@ curl -X POST "$EVOLUTION_API_URL/webhook/set/$EVOLUTION_INSTANCE" \
   }'
 ```
 
-Em desenvolvimento, exponha o localhost com `ngrok http 5000` e use a URL gerada.
+- **Em desenvolvimento**, exponha o localhost com `ngrok http 5000` e use a URL gerada.
+- **Em produção com o `docker-compose.yml` deste projeto**, bot e Evolution ficam na
+  mesma rede Docker interna, então a URL do webhook é o nome do serviço, sem HTTPS:
+  `http://bot:5000/webhook` — não precisa expor o bot publicamente.
 
 ---
 
@@ -105,13 +109,41 @@ curl -X POST http://localhost:5000/webhook \
 
 ## Deploy na VPS com Docker
 
+Este projeto sobe **bot + Evolution API + Postgres + Redis + Caddy** juntos. O Caddy
+cuida do HTTPS automaticamente (Let's Encrypt) para a Evolution API; o bot fica só na
+rede interna, sem exposição pública.
+
+1. Aponte um registro **A** do domínio que você vai usar (ex: `evolution.seudominio.com.br`)
+   para o IP público da VPS. O Caddy só emite o certificado se o DNS já estiver resolvendo.
+2. Libere as portas 80 e 443 no Security List/NSG da Oracle Cloud (além da regra padrão
+   de saída).
+3. Preencha o `.env`:
+
 ```bash
-cp .env.example .env    # preencha
-docker compose up -d --build
-docker compose logs -f bot
+cp .env.example .env
 ```
 
-Coloque um Nginx ou Caddy na frente para servir HTTPS — a Evolution exige URL pública.
+   - `POSTGRES_PASSWORD`: senha forte para o Postgres da Evolution.
+   - `EVOLUTION_DOMAIN`: o domínio apontado no passo 1 (ex: `evolution.seudominio.com.br`).
+   - `EVOLUTION_API_KEY`: invente uma chave forte — ela vira a `apikey` de autenticação.
+   - `EVOLUTION_API_URL=http://evolution:8080` (nome do serviço no compose).
+
+4. Suba tudo:
+
+```bash
+docker compose up -d --build
+docker compose logs -f evolution   # acompanhe até aparecer "ready"
+```
+
+5. Acesse `https://evolution.seudominio.com.br` (Evolution Manager), crie a instância
+   `blackbass` (ou o nome que você colocou em `EVOLUTION_INSTANCE`) e escaneie o QR code.
+6. Configure o webhook da instância apontando para `http://bot:5000/webhook` com o evento
+   `MESSAGES_UPSERT` (veja o comando `curl` na seção anterior).
+7. Teste mandando uma mensagem de WhatsApp para o número conectado.
+
+```bash
+docker compose logs -f bot
+```
 
 ---
 
@@ -129,7 +161,7 @@ Coloque um Nginx ou Caddy na frente para servir HTTPS — a Evolution exige URL 
 
 - **Menu, horários, planos e preços:** `src/services/bot_logic.py` (constantes no topo do arquivo).
 - **Formato das mensagens enviadas:** `src/services/evolution.py`.
-- **Novos endpoints:** crie um blueprint em `src/routes/` e registre em `src/__init__.py`.
+- **Novos endpoints:** crie um `APIRouter` em `src/routes/` e registre em `src/__init__.py`.
 
 > O estado da conversa está em memória (`_ESTADOS` em `bot_logic.py`). Para múltiplos
 > workers ou reinícios sem perder contexto, troque por Redis ou banco.

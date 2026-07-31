@@ -5,10 +5,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "${PORT:-5000}:5000"
+    expose:
+      - "5000"
     volumes:
       - ./logs:/app/logs
+    depends_on:
+      - evolution
+    networks:
+      - internal
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 30s
@@ -16,17 +20,80 @@ services:
       retries: 3
       start_period: 10s
 
-  # Descomente para subir a Evolution API junto na mesma VPS.
-  # evolution:
-  #   image: atendai/evolution-api:latest
-  #   container_name: evolution-api
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8080:8080"
-  #   environment:
-  #     - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
-  #   volumes:
-  #     - evolution_instances:/evolution/instances
+  evolution:
+    # Confira a tag mais recente em hub.docker.com/r/atendai/evolution-api antes de ir pra producao.
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution:${POSTGRES_PASSWORD}@postgres:5432/evolution
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379
+      - CACHE_REDIS_SAVE_INSTANCES=true
+      - CACHE_LOCAL_ENABLED=false
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - internal
+      - web
 
-# volumes:
-#   evolution_instances:
+  postgres:
+    image: postgres:16-alpine
+    container_name: evolution-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=evolution
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=evolution
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: evolution-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+
+networks:
+  # Bot <-> Evolution <-> Postgres/Redis, sem sair do host.
+  internal:
+  # Apenas o Caddy e a Evolution ficam aqui (Evolution precisa de HTTPS publico p/ o manager/QR code).
+  web:
+
+volumes:
+  evolution_instances:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

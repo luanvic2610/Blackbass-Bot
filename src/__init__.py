@@ -1,8 +1,8 @@
-"""Factory da aplicacao Flask."""
+"""Factory da aplicacao FastAPI."""
 
 import logging
 
-from flask import Flask
+from fastapi import FastAPI
 
 from src.config import settings
 
@@ -16,16 +16,15 @@ def _configurar_logs() -> None:
     )
 
 
-def create_app() -> Flask:
-    """Cria e configura a instancia do Flask."""
+def create_app() -> FastAPI:
+    """Cria e configura a instancia do FastAPI."""
     _configurar_logs()
     logger = logging.getLogger(__name__)
 
-    app = Flask(__name__)
-    app.config["JSON_SORT_KEYS"] = False
+    app = FastAPI(title="Blackbass Bot", version=__version__)
 
-    from src.routes import webhook_bp
-    app.register_blueprint(webhook_bp)
+    from src.routes import webhook_router
+    app.include_router(webhook_router)
 
     pendentes = settings.missing_required()
     if pendentes:
@@ -35,5 +34,5 @@ def create_app() -> Flask:
             ", ".join(pendentes),
         )
 
-    logger.info("App iniciado (env=%s, instancia=%s)", settings.FLASK_ENV, settings.EVOLUTION_INSTANCE)
+    logger.info("App iniciado (env=%s, instancia=%s)", settings.APP_ENV, settings.EVOLUTION_INSTANCE)
     return app

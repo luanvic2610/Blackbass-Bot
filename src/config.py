@@ -21,7 +21,7 @@ def _get(key: str, default: str = "") -> str:
 @dataclass(frozen=True)
 class Settings:
     # Aplicacao
-    FLASK_ENV: str = field(default_factory=lambda: _get("FLASK_ENV", "production"))
+    APP_ENV: str = field(default_factory=lambda: _get("APP_ENV", "production"))
     PORT: int = field(default_factory=lambda: int(_get("PORT", "5000")))
     LOG_LEVEL: str = field(default_factory=lambda: _get("LOG_LEVEL", "INFO").upper())
 
@@ -42,7 +42,7 @@ class Settings:
 
     @property
     def is_debug(self) -> bool:
-        return self.FLASK_ENV.lower() in {"development", "dev", "debug"}
+        return self.APP_ENV.lower() in {"development", "dev", "debug"}
 
     def missing_required(self) -> list[str]:
         """Retorna a lista de variaveis obrigatorias que nao foram preenchidas."""
