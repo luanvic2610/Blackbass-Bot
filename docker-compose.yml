@@ -21,8 +21,9 @@ services:
       start_period: 10s
 
   evolution:
-    # Confira a tag mais recente em hub.docker.com/r/atendai/evolution-api antes de ir pra producao.
-    image: atendai/evolution-api:latest
+    # Confira a tag mais recente em hub.docker.com/r/evoapicloud/evolution-api antes de ir pra producao.
+    # (a org antiga "atendai/evolution-api" nao aceita mais pull; o projeto migrou para evoapicloud).
+    image: evoapicloud/evolution-api:latest
     container_name: evolution-api
     restart: unless-stopped
     env_file:
