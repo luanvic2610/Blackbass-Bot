@@ -35,10 +35,16 @@ services:
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://evolution:${POSTGRES_PASSWORD}@postgres:5432/evolution
       - DATABASE_SAVE_DATA_INSTANCE=true
-      - CACHE_REDIS_ENABLED=true
-      - CACHE_REDIS_URI=redis://redis:6379
-      - CACHE_REDIS_SAVE_INSTANCES=true
-      - CACHE_LOCAL_ENABLED=false
+      - DATABASE_SAVE_DATA_CHATS=false
+      - DATABASE_SAVE_DATA_CONTACTS=false
+      - DATABASE_SAVE_DATA_HISTORIC=false
+      - DATABASE_SAVE_DATA_LABELS=false
+      # Redis desativado: em servidores com pouca CPU/RAM, o cache Redis concorrendo com a
+      # geracao de pre-keys do Baileys pode causar timeout (stream 515) e o WhatsApp derruba
+      # o aparelho logo apos parear (erro 401 device_removed). Ver evolution-api#2437.
+      - CACHE_REDIS_ENABLED=false
+      - CACHE_LOCAL_ENABLED=true
+      - CONFIG_SESSION_PHONE_VERSION=2.3000.1033773198
     volumes:
       - evolution_instances:/evolution/instances
     depends_on:
