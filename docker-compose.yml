@@ -30,6 +30,7 @@ services:
       - .env
     environment:
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - SERVER_URL=https://${EVOLUTION_DOMAIN}
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://evolution:${POSTGRES_PASSWORD}@postgres:5432/evolution
