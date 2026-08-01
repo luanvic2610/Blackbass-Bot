@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body, Header, Query
 from fastapi.responses import JSONResponse
 
 from src.config import settings
-from src.services import bot_logic, evolution
+from src.services import bot_logic, evolution, notificacoes
 from src.utils.formatters import do_jid
 
 logger = logging.getLogger(__name__)
@@ -63,16 +63,22 @@ def receber(
         return JSONResponse({"status": "ignored", "event": evento}, status_code=200)
 
     chave = dados.get("key") or {}
-
-    # Ignora o que o proprio bot enviou e mensagens de grupo.
-    if chave.get("fromMe"):
-        return JSONResponse({"status": "ignored", "reason": "fromMe"}, status_code=200)
-
     jid = chave.get("remoteJid", "")
+
     if jid.endswith("@g.us"):
         return JSONResponse({"status": "ignored", "reason": "grupo"}, status_code=200)
 
     numero = do_jid(jid)
+
+    if chave.get("fromMe"):
+        # Mensagens que o bot manda pela API chegam com source="web". Se vier
+        # de outro source (ios/android), foi a equipe digitando manualmente
+        # no celular conectado: bot fica em silencio pra esse numero.
+        if numero and dados.get("source") != "web":
+            bot_logic.ativar_silencio(numero)
+            logger.info("Equipe respondeu manualmente para %s; bot em silencio.", numero)
+        return JSONResponse({"status": "ignored", "reason": "fromMe"}, status_code=200)
+
     texto = _extrair_texto(dados.get("message") or {})
     nome = dados.get("pushName", "") or ""
 
@@ -97,8 +103,18 @@ def receber(
         evolution.enviar_texto(numero, resposta["texto"])
 
         if resposta.get("tipo") == "encaminhar":
-            # TODO: notificar a equipe (grupo interno, e-mail, CRM...).
             logger.info("Contato %s precisa de atendimento humano.", numero)
+            try:
+                notificacoes.enviar_email_equipe(
+                    assunto=f"[WhatsApp] {nome or numero} quer falar com atendente",
+                    corpo=(
+                        f"Contato: {nome or '(sem nome)'}\n"
+                        f"Numero: {numero}\n"
+                        f"Mensagem: {texto}\n"
+                    ),
+                )
+            except notificacoes.NotificacaoError as exc:
+                logger.error("Falha ao notificar equipe por e-mail: %s", exc)
 
     except evolution.EvolutionError as exc:
         logger.error("Erro ao responder %s: %s", numero, exc)

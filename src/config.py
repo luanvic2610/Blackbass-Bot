@@ -40,6 +40,13 @@ class Settings:
     ACADEMIA_TELEFONE: str = field(default_factory=lambda: _get("ACADEMIA_TELEFONE"))
     ACADEMIA_ENDERECO: str = field(default_factory=lambda: _get("ACADEMIA_ENDERECO"))
 
+    # Notificacoes por e-mail (ex: cliente pediu para falar com atendente)
+    SMTP_HOST: str = field(default_factory=lambda: _get("SMTP_HOST", "smtp.gmail.com"))
+    SMTP_PORT: int = field(default_factory=lambda: int(_get("SMTP_PORT", "587")))
+    SMTP_USER: str = field(default_factory=lambda: _get("SMTP_USER"))
+    SMTP_PASSWORD: str = field(default_factory=lambda: _get("SMTP_PASSWORD"))
+    EMAIL_EQUIPE: str = field(default_factory=lambda: _get("EMAIL_EQUIPE"))
+
     @property
     def is_debug(self) -> bool:
         return self.APP_ENV.lower() in {"development", "dev", "debug"}
