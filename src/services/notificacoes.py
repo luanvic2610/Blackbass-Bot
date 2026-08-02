@@ -13,16 +13,17 @@ class NotificacaoError(RuntimeError):
     """Erro ao enviar uma notificacao para a equipe."""
 
 
-def enviar_email_equipe(assunto: str, corpo: str) -> None:
-    """Manda um e-mail avisando a equipe. Nao faz nada se o SMTP nao estiver configurado."""
-    if not (settings.SMTP_USER and settings.SMTP_PASSWORD and settings.EMAIL_EQUIPE):
-        logger.warning("SMTP nao configurado; notificacao por e-mail nao enviada.")
+def enviar_email_equipe(destinatario: str, assunto: str, corpo: str) -> None:
+    """Manda um e-mail avisando a equipe do cliente. Nao faz nada se o SMTP ou o
+    destinatario nao estiverem configurados."""
+    if not (settings.SMTP_USER and settings.SMTP_PASSWORD and destinatario):
+        logger.warning("SMTP ou e-mail da equipe nao configurados; notificacao nao enviada.")
         return
 
     msg = EmailMessage()
     msg["Subject"] = assunto
     msg["From"] = settings.SMTP_USER
-    msg["To"] = settings.EMAIL_EQUIPE
+    msg["To"] = destinatario
     msg.set_content(corpo)
 
     try:

@@ -1,4 +1,10 @@
-"""Integracao com a Evolution API: envio de mensagens, botoes, listas e arquivos."""
+"""Integracao com a Evolution API: envio de mensagens, botoes, listas e arquivos.
+
+Cada cliente cadastrado corresponde a uma instancia diferente na Evolution;
+por isso toda funcao aqui recebe `instancia` como primeiro parametro. A URL
+base e a apikey continuam globais (a apikey configurada na Evolution e uma
+chave mestre, autoriza operacoes em qualquer instancia do mesmo deployment).
+"""
 
 import logging
 from typing import Any
@@ -17,8 +23,8 @@ class EvolutionError(RuntimeError):
     """Erro retornado pela Evolution API."""
 
 
-def _url(caminho: str) -> str:
-    return f"{settings.EVOLUTION_API_URL}/{caminho.lstrip('/')}/{settings.EVOLUTION_INSTANCE}"
+def _url(instancia: str, caminho: str) -> str:
+    return f"{settings.EVOLUTION_API_URL}/{caminho.lstrip('/')}/{instancia}"
 
 
 def _headers() -> dict[str, str]:
@@ -28,8 +34,8 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _post(caminho: str, payload: dict[str, Any]) -> dict[str, Any]:
-    url = _url(caminho)
+def _post(instancia: str, caminho: str, payload: dict[str, Any]) -> dict[str, Any]:
+    url = _url(instancia, caminho)
     logger.debug("POST %s | payload=%s", url, payload)
     try:
         resp = requests.post(url, json=payload, headers=_headers(), timeout=TIMEOUT)
@@ -49,12 +55,12 @@ def _post(caminho: str, payload: dict[str, Any]) -> dict[str, Any]:
 # Envio de mensagens
 # --------------------------------------------------------------------------
 
-def enviar_texto(numero: str, texto: str, delay: int = 1200) -> list[dict[str, Any]]:
+def enviar_texto(instancia: str, numero: str, texto: str, delay: int = 1200) -> list[dict[str, Any]]:
     """Envia texto simples. Quebra automaticamente mensagens muito longas."""
     respostas = []
     for parte in dividir_texto(texto):
         respostas.append(
-            _post("message/sendText", {
+            _post(instancia, "message/sendText", {
                 "number": para_jid(numero),
                 "text": parte,
                 "delay": delay,
@@ -64,6 +70,7 @@ def enviar_texto(numero: str, texto: str, delay: int = 1200) -> list[dict[str, A
 
 
 def enviar_botoes(
+    instancia: str,
     numero: str,
     titulo: str,
     descricao: str,
@@ -74,7 +81,7 @@ def enviar_botoes(
 
     botoes: [{"id": "1", "titulo": "Horarios"}, ...]  (maximo de 3)
     """
-    return _post("message/sendButtons", {
+    return _post(instancia, "message/sendButtons", {
         "number": para_jid(numero),
         "title": titulo,
         "description": descricao,
@@ -91,6 +98,7 @@ def enviar_botoes(
 
 
 def enviar_lista(
+    instancia: str,
     numero: str,
     titulo: str,
     descricao: str,
@@ -103,7 +111,7 @@ def enviar_lista(
     secoes: [{"title": "Planos", "rows": [{"title": "Mensal", "description": "...",
               "rowId": "plano_mensal"}]}]
     """
-    return _post("message/sendList", {
+    return _post(instancia, "message/sendList", {
         "number": para_jid(numero),
         "title": titulo,
         "description": descricao,
@@ -114,6 +122,7 @@ def enviar_lista(
 
 
 def enviar_arquivo(
+    instancia: str,
     numero: str,
     url_ou_base64: str,
     nome_arquivo: str,
@@ -121,7 +130,7 @@ def enviar_arquivo(
     tipo: str = "document",
 ) -> dict[str, Any]:
     """Envia midia. tipo: image | video | document | audio."""
-    return _post("message/sendMedia", {
+    return _post(instancia, "message/sendMedia", {
         "number": para_jid(numero),
         "mediatype": tipo,
         "media": url_ou_base64,
@@ -130,9 +139,11 @@ def enviar_arquivo(
     })
 
 
-def enviar_localizacao(numero: str, nome: str, endereco: str, lat: float, lng: float) -> dict[str, Any]:
+def enviar_localizacao(
+    instancia: str, numero: str, nome: str, endereco: str, lat: float, lng: float
+) -> dict[str, Any]:
     """Envia a localizacao da academia."""
-    return _post("message/sendLocation", {
+    return _post(instancia, "message/sendLocation", {
         "number": para_jid(numero),
         "name": nome,
         "address": endereco,
@@ -141,9 +152,9 @@ def enviar_localizacao(numero: str, nome: str, endereco: str, lat: float, lng: f
     })
 
 
-def marcar_como_lida(numero: str, message_id: str) -> dict[str, Any]:
+def marcar_como_lida(instancia: str, numero: str, message_id: str) -> dict[str, Any]:
     """Marca a mensagem recebida como lida."""
-    return _post("chat/markMessageAsRead", {
+    return _post(instancia, "chat/markMessageAsRead", {
         "readMessages": [{
             "remoteJid": para_jid(numero),
             "id": message_id,
@@ -152,9 +163,9 @@ def marcar_como_lida(numero: str, message_id: str) -> dict[str, Any]:
     })
 
 
-def enviar_digitando(numero: str, duracao_ms: int = 2000) -> dict[str, Any]:
+def enviar_digitando(instancia: str, numero: str, duracao_ms: int = 2000) -> dict[str, Any]:
     """Mostra 'digitando...' no chat do contato."""
-    return _post("chat/sendPresence", {
+    return _post(instancia, "chat/sendPresence", {
         "number": para_jid(numero),
         "presence": "composing",
         "delay": duracao_ms,

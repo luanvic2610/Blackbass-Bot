@@ -11,6 +11,7 @@ services:
       - ./logs:/app/logs
     depends_on:
       - evolution
+      - postgres
     networks:
       - internal
     healthcheck:
@@ -64,6 +65,10 @@ services:
       - POSTGRES_DB=evolution
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      # So no loopback da propria VPS - nunca exposto pra internet. Acesso
+      # externo (pgAdmin etc.) via tunel SSH: ssh -L 5433:localhost:5432 ...
+      - "127.0.0.1:5432:5432"
     networks:
       - internal
 

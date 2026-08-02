@@ -4,7 +4,7 @@ Desenvolvimento:
     python main.py
 
 Producao (VPS / Docker):
-    gunicorn --bind 0.0.0.0:5000 --workers 2 -k uvicorn.workers.UvicornWorker main:app
+    gunicorn --bind 0.0.0.0:5000 --workers 1 -k uvicorn.workers.UvicornWorker main:app
 """
 
 import uvicorn

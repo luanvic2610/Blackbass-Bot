@@ -1,17 +1,20 @@
-"""Regras de negocio do bot da academia.
+"""Regras de negocio do bot, multi-cliente.
 
-Fluxo: recebe o texto do usuario -> decide a resposta -> devolve para a rota,
-que usa o servico `evolution` para entregar no WhatsApp.
+Fluxo: recebe o texto do usuario + a config do cliente (academia) -> decide a
+resposta -> devolve para a rota, que usa o servico `evolution` para entregar
+no WhatsApp.
 
-O estado de conversa fica em memoria (dict). Para producao, troque
-`_ESTADOS` por Redis ou banco.
+O estado de conversa fica em memoria (dict), chaveado por
+"{instancia}:{numero}" - assim o mesmo numero de telefone falando com dois
+clientes diferentes nao mistura estado/silencio entre eles. Para producao com
+mais de 1 worker, troque `_ESTADOS` por Redis ou banco.
 """
 
 import logging
 from datetime import timedelta
 from typing import Any
 
-from src.config import settings
+from src.services.clientes import ClienteConfig
 from src.utils.formatters import (
     agora_brt,
     dia_da_semana,
@@ -23,7 +26,7 @@ from src.utils.formatters import (
 
 logger = logging.getLogger(__name__)
 
-# numero -> {"etapa": str, "dados": dict}
+# "instancia:numero" -> {"etapa": str, "dados": dict}
 _ESTADOS: dict[str, dict[str, Any]] = {}
 
 # Quanto tempo o bot fica em silencio depois que um humano entra na conversa
@@ -31,58 +34,8 @@ _ESTADOS: dict[str, dict[str, Any]] = {}
 SILENCIO_MINUTOS = 30
 
 # --------------------------------------------------------------------------
-# Conteudo (troque por consulta a banco/planilha quando tiver)
+# Navegacao do bot (nao e dado de negocio por cliente)
 # --------------------------------------------------------------------------
-
-GRADE_HORARIOS = {
-    "segunda-feira": [
-        "09:00 Jiu Jitsu Gi Adulto",
-        "18:00 Jiu Jitsu Nogi Adulto",
-        "19:00 Jiu Jitsu Kids Gi (6-9 anos)",
-        "20:00 Jiu Jitsu Gi Infanto (10-15 anos)",
-        "21:00 Jiu Jitsu Gi Adulto",
-    ],
-    "terca-feira": [
-        "08:00 Muay Thai (Misto)",
-        "18:15 Jiu Jitsu Baby Gi (3-5 anos)",
-        "19:00 Boxe (Misto)",
-        "20:00 Muay Thai (Misto)",
-        "21:00 Jiu Jitsu Gi Adulto",
-    ],
-    "quarta-feira": [
-        "09:00 Jiu Jitsu Gi Adulto",
-        "18:00 Jiu Jitsu Nogi Adulto",
-        "19:00 Jiu Jitsu Kids Gi (6-9 anos)",
-        "20:00 Jiu Jitsu Gi Infanto (10-15 anos)",
-        "21:00 Jiu Jitsu Gi Adulto",
-    ],
-    "quinta-feira": [
-        "08:00 Muay Thai (Misto)",
-        "18:15 Jiu Jitsu Baby Gi (3-5 anos)",
-        "19:00 Boxe (Misto)",
-        "20:00 Muay Thai (Misto)",
-        "21:00 Jiu Jitsu Gi Adulto",
-    ],
-    "sexta-feira": [
-        "09:00 Jiu Jitsu Nogi Adulto",
-        "18:00 Jiu Jitsu Nogi Adulto",
-        "19:00 Jiu Jitsu Gi Feminino",
-        "20:00 Jiu Jitsu Gi Infanto (10-15 anos)",
-        "21:00 Jiu Jitsu Gi Adulto",
-    ],
-    "sabado": ["10:00 Capoeira"],
-    "domingo": ["Fechado"],
-}
-
-HORARIO_FUNCIONAMENTO = (
-    "Segunda a sexta: 05h30 as 22h00\n"
-    "Sabado: 08h00 as 14h00\n"
-    "Domingo e feriados: fechado"
-)
-
-GOOGLE_MAPS_URL = "https://maps.app.goo.gl/rv6xNnQ6fLTJF6TC8"
-INSTAGRAM_URL = "https://www.instagram.com/teamcruzviana_/"
-FORM_AULA_EXPERIMENTAL_URL = "https://forms.gle/g9tQzMD7cuHs7aC29"
 
 OPCOES_MENU = {
     "1": "horarios",
@@ -108,29 +61,33 @@ SAIR = {"menu", "voltar", "sair", "cancelar", "0"}
 # Estado
 # --------------------------------------------------------------------------
 
-def obter_estado(numero: str) -> dict[str, Any]:
-    return _ESTADOS.setdefault(numero, {"etapa": "inicio", "dados": {}})
+def _chave(instancia: str, numero: str) -> str:
+    return f"{instancia}:{numero}"
 
 
-def definir_etapa(numero: str, etapa: str) -> None:
-    obter_estado(numero)["etapa"] = etapa
+def obter_estado(instancia: str, numero: str) -> dict[str, Any]:
+    return _ESTADOS.setdefault(_chave(instancia, numero), {"etapa": "inicio", "dados": {}})
 
 
-def limpar_estado(numero: str) -> None:
-    _ESTADOS.pop(numero, None)
+def definir_etapa(instancia: str, numero: str, etapa: str) -> None:
+    obter_estado(instancia, numero)["etapa"] = etapa
 
 
-def ativar_silencio(numero: str, minutos: int = SILENCIO_MINUTOS) -> None:
+def limpar_estado(instancia: str, numero: str) -> None:
+    _ESTADOS.pop(_chave(instancia, numero), None)
+
+
+def ativar_silencio(instancia: str, numero: str, minutos: int = SILENCIO_MINUTOS) -> None:
     """Faz o bot parar de responder esse numero por `minutos` (renova se ja estava em silencio)."""
-    obter_estado(numero)["dados"]["silencio_ate"] = agora_brt() + timedelta(minutes=minutos)
+    obter_estado(instancia, numero)["dados"]["silencio_ate"] = agora_brt() + timedelta(minutes=minutos)
 
 
-def desativar_silencio(numero: str) -> None:
-    obter_estado(numero)["dados"].pop("silencio_ate", None)
+def desativar_silencio(instancia: str, numero: str) -> None:
+    obter_estado(instancia, numero)["dados"].pop("silencio_ate", None)
 
 
-def em_silencio(numero: str) -> bool:
-    silencio_ate = obter_estado(numero)["dados"].get("silencio_ate")
+def em_silencio(instancia: str, numero: str) -> bool:
+    silencio_ate = obter_estado(instancia, numero)["dados"].get("silencio_ate")
     return bool(silencio_ate and agora_brt() < silencio_ate)
 
 
@@ -138,10 +95,10 @@ def em_silencio(numero: str) -> bool:
 # Textos
 # --------------------------------------------------------------------------
 
-def montar_menu(nome_contato: str = "") -> str:
+def montar_menu(cliente: ClienteConfig, nome_contato: str = "") -> str:
     ola = f"{saudacao()}{', ' + nome_contato.split()[0] if nome_contato else ''}!"
     return (
-        f"{ola} Eu sou o assistente virtual da {negrito(settings.ACADEMIA_NOME)}. "
+        f"{ola} Eu sou o assistente virtual da {negrito(cliente.nome)}. "
         "Como posso ajudar?\n\n"
         "1 - Grade de horarios\n"
         "2 - Agendar aula experimental\n"
@@ -152,47 +109,47 @@ def montar_menu(nome_contato: str = "") -> str:
     )
 
 
-def montar_horarios(dia: str | None = None) -> str:
+def montar_horarios(cliente: ClienteConfig, dia: str | None = None) -> str:
     if dia:
-        aulas = GRADE_HORARIOS.get(dia, [])
+        aulas = cliente.grade_horarios.get(dia, [])
         if not aulas:
             return "Nao encontrei a grade desse dia. Digite *1* para ver a semana inteira."
         corpo = "\n".join(f"- {a}" for a in aulas)
         return f"{negrito('Grade de ' + dia.capitalize())}\n{corpo}"
 
     blocos = []
-    for nome_dia, aulas in GRADE_HORARIOS.items():
+    for nome_dia, aulas in cliente.grade_horarios.items():
         blocos.append(negrito(nome_dia.capitalize()) + "\n" + "\n".join(f"- {a}" for a in aulas))
     rodape = f"\n\nHoje e {dia_da_semana()}, {formatar_data()}.\nDigite *menu* para voltar."
     return f"{negrito('GRADE DE AULAS')}\n\n" + "\n\n".join(blocos) + rodape
 
 
-def montar_endereco() -> str:
-    telefone = f"Telefone: {settings.ACADEMIA_TELEFONE}\n" if settings.ACADEMIA_TELEFONE else ""
+def montar_endereco(cliente: ClienteConfig) -> str:
+    telefone = f"Telefone: {cliente.telefone}\n" if cliente.telefone else ""
     return (
-        f"{negrito(settings.ACADEMIA_NOME)}\n"
-        f"{settings.ACADEMIA_ENDERECO or 'Endereco nao configurado'}\n"
+        f"{negrito(cliente.nome)}\n"
+        f"{cliente.endereco or 'Endereco nao configurado'}\n"
         f"{telefone}\n"
-        f"{negrito('Como chegar')}\n{GOOGLE_MAPS_URL}\n\n"
-        f"{negrito('Funcionamento')}\n{HORARIO_FUNCIONAMENTO}\n\n"
+        f"{negrito('Como chegar')}\n{cliente.google_maps_url}\n\n"
+        f"{negrito('Funcionamento')}\n{cliente.horario_funcionamento}\n\n"
         "Digite *menu* para voltar."
     )
 
 
-def montar_aula_experimental() -> str:
+def montar_aula_experimental(cliente: ClienteConfig) -> str:
     return (
         f"{negrito('Aula experimental gratuita!')}\n\n"
         "Preencha o formulario abaixo com seus dados e o dia que prefere. "
         "Depois disso sua vaga entra direto na nossa agenda:\n\n"
-        f"{FORM_AULA_EXPERIMENTAL_URL}\n\n"
+        f"{cliente.form_aula_experimental_url}\n\n"
         "Digite *menu* para voltar."
     )
 
 
-def montar_redes_sociais() -> str:
+def montar_redes_sociais(cliente: ClienteConfig) -> str:
     return (
         f"{negrito('Redes sociais')}\n\n"
-        f"Instagram: {INSTAGRAM_URL}\n\n"
+        f"Instagram: {cliente.instagram_url}\n\n"
         "Digite *menu* para voltar."
     )
 
@@ -211,7 +168,13 @@ def _identificar_intencao(texto: str) -> str | None:
     return None
 
 
-def processar_mensagem(numero: str, texto: str, nome_contato: str = "") -> dict[str, Any]:
+def processar_mensagem(
+    instancia: str,
+    numero: str,
+    texto: str,
+    cliente: ClienteConfig,
+    nome_contato: str = "",
+) -> dict[str, Any]:
     """Recebe a mensagem do usuario e devolve o que o bot deve responder.
 
     Retorna:
@@ -219,7 +182,7 @@ def processar_mensagem(numero: str, texto: str, nome_contato: str = "") -> dict[
         {"tipo": "encaminhar", "texto": "..."}                 -> notificar atendente
         {"tipo": "ignorar"}                                    -> nao responder
     """
-    estado = obter_estado(numero)
+    estado = obter_estado(instancia, numero)
     limpo = normalizar_texto(texto)
 
     if not limpo:
@@ -227,42 +190,42 @@ def processar_mensagem(numero: str, texto: str, nome_contato: str = "") -> dict[
 
     # Escape global para o menu: funciona mesmo com o bot em silencio.
     if limpo in SAIR:
-        desativar_silencio(numero)
-        definir_etapa(numero, "menu")
-        return {"tipo": "texto", "texto": montar_menu(nome_contato)}
+        desativar_silencio(instancia, numero)
+        definir_etapa(instancia, numero, "menu")
+        return {"tipo": "texto", "texto": montar_menu(cliente, nome_contato)}
 
     # Atendimento humano em andamento (cliente pediu atendente ou a equipe
     # mandou mensagem manualmente): bot fica calado ate o timeout ou ate o
     # cliente digitar "menu" de novo. Cada mensagem nova renova o timeout.
-    if em_silencio(numero):
-        ativar_silencio(numero)
+    if em_silencio(instancia, numero):
+        ativar_silencio(instancia, numero)
         return {"tipo": "ignorar"}
 
     # --- Primeira interacao ---
     if estado["etapa"] == "inicio":
-        definir_etapa(numero, "menu")
+        definir_etapa(instancia, numero, "menu")
         intencao = _identificar_intencao(texto)
         if not intencao:
-            return {"tipo": "texto", "texto": montar_menu(nome_contato)}
+            return {"tipo": "texto", "texto": montar_menu(cliente, nome_contato)}
     else:
         intencao = _identificar_intencao(texto)
 
     # --- Menu ---
     if intencao == "horarios":
-        return {"tipo": "texto", "texto": montar_horarios()}
+        return {"tipo": "texto", "texto": montar_horarios(cliente)}
 
     if intencao == "endereco":
-        return {"tipo": "texto", "texto": montar_endereco()}
+        return {"tipo": "texto", "texto": montar_endereco(cliente)}
 
     if intencao == "redes_sociais":
-        return {"tipo": "texto", "texto": montar_redes_sociais()}
+        return {"tipo": "texto", "texto": montar_redes_sociais(cliente)}
 
     if intencao == "aula_experimental":
-        return {"tipo": "texto", "texto": montar_aula_experimental()}
+        return {"tipo": "texto", "texto": montar_aula_experimental(cliente)}
 
     if intencao == "atendente":
-        definir_etapa(numero, "atendimento_humano")
-        ativar_silencio(numero)
+        definir_etapa(instancia, numero, "atendimento_humano")
+        ativar_silencio(instancia, numero)
         return {
             "tipo": "encaminhar",
             "texto": (
@@ -275,6 +238,6 @@ def processar_mensagem(numero: str, texto: str, nome_contato: str = "") -> dict[
     return {
         "tipo": "texto",
         "texto": (
-            "Nao entendi essa opcao.\n\n" + montar_menu(nome_contato)
+            "Nao entendi essa opcao.\n\n" + montar_menu(cliente, nome_contato)
         ),
     }
