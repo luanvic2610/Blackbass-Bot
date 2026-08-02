@@ -47,6 +47,7 @@ GRADE_HORARIOS = {
         "18:15 Jiu Jitsu Baby Gi (3-5 anos)",
         "19:00 Boxe (Misto)",
         "20:00 Muay Thai (Misto)",
+        "21:00 Jiu Jitsu Gi Adulto",
     ],
     "quarta-feira": [
         "09:00 Jiu Jitsu Gi Adulto",
@@ -57,15 +58,17 @@ GRADE_HORARIOS = {
     ],
     "quinta-feira": [
         "08:00 Muay Thai (Misto)",
-        "18:00 Jiu Jitsu Nogi Adulto",
         "18:15 Jiu Jitsu Baby Gi (3-5 anos)",
         "19:00 Boxe (Misto)",
         "20:00 Muay Thai (Misto)",
+        "21:00 Jiu Jitsu Gi Adulto",
     ],
     "sexta-feira": [
         "09:00 Jiu Jitsu Nogi Adulto",
+        "18:00 Jiu Jitsu Nogi Adulto",
         "19:00 Jiu Jitsu Gi Feminino",
         "20:00 Jiu Jitsu Gi Infanto (10-15 anos)",
+        "21:00 Jiu Jitsu Gi Adulto",
     ],
     "sabado": ["10:00 Capoeira"],
     "domingo": ["Fechado"],
