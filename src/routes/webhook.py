@@ -101,10 +101,12 @@ def receber(
     numero = do_jid(jid)
 
     if chave.get("fromMe"):
-        # Mensagens que o bot manda pela API chegam com source="web". Se vier
-        # de outro source (ios/android), foi a equipe digitando manualmente
-        # no celular conectado: bot fica em silencio pra esse numero.
-        if numero and dados.get("source") != "web":
+        # A Evolution manda source="web" tanto pra mensagem que o bot envia
+        # via API quanto pra mensagem que um humano manda pelo WhatsApp Web
+        # de verdade - nao da pra diferenciar pelo `source`. Por isso
+        # conferimos se foi a gente que mandou pelo id da mensagem; qualquer
+        # outra (celular ou WhatsApp Web) foi a equipe respondendo manualmente.
+        if numero and not evolution.foi_enviado_por_nos(chave.get("id")):
             bot_logic.ativar_silencio(instancia, numero)
             logger.info("Equipe respondeu manualmente para %s; bot em silencio.", numero)
         return JSONResponse({"status": "ignored", "reason": "fromMe"}, status_code=200)

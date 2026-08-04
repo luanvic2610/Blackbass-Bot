@@ -7,6 +7,7 @@ chave mestre, autoriza operacoes em qualquer instancia do mesmo deployment).
 """
 
 import logging
+import time
 from typing import Any
 
 import requests
@@ -52,6 +53,37 @@ def _post(instancia: str, caminho: str, payload: dict[str, Any]) -> dict[str, An
 
 
 # --------------------------------------------------------------------------
+# Rastreio de mensagens enviadas por nos (bot).
+#
+# A Evolution manda `source: "web"` tanto pra mensagem que o bot envia via
+# API quanto pra mensagem que um humano manda pelo WhatsApp Web de verdade
+# (navegador) - nao da pra diferenciar pelo `source`. Por isso guardamos o id
+# de cada mensagem que a gente manda; quando chega um evento `fromMe`, o
+# webhook confere esse id aqui em vez de olhar o `source`.
+# --------------------------------------------------------------------------
+
+_TTL_IDS_ENVIADOS = 300  # segundos; o webhook do proprio envio volta em segundos
+_ids_enviados_por_nos: dict[str, float] = {}
+
+
+def _registrar_enviado(resposta: dict[str, Any]) -> dict[str, Any]:
+    message_id = (resposta.get("key") or {}).get("id")
+    if message_id:
+        agora = time.monotonic()
+        _ids_enviados_por_nos[message_id] = agora
+        limite = agora - _TTL_IDS_ENVIADOS
+        for mid, ts in list(_ids_enviados_por_nos.items()):
+            if ts < limite:
+                del _ids_enviados_por_nos[mid]
+    return resposta
+
+
+def foi_enviado_por_nos(message_id: str | None) -> bool:
+    """True se esse id de mensagem foi mandado por nos mesmos (via essa API)."""
+    return bool(message_id) and message_id in _ids_enviados_por_nos
+
+
+# --------------------------------------------------------------------------
 # Envio de mensagens
 # --------------------------------------------------------------------------
 
@@ -60,11 +92,13 @@ def enviar_texto(instancia: str, numero: str, texto: str, delay: int = 1200) -> 
     respostas = []
     for parte in dividir_texto(texto):
         respostas.append(
-            _post(instancia, "message/sendText", {
-                "number": para_jid(numero),
-                "text": parte,
-                "delay": delay,
-            })
+            _registrar_enviado(
+                _post(instancia, "message/sendText", {
+                    "number": para_jid(numero),
+                    "text": parte,
+                    "delay": delay,
+                })
+            )
         )
     return respostas
 
@@ -81,20 +115,22 @@ def enviar_botoes(
 
     botoes: [{"id": "1", "titulo": "Horarios"}, ...]  (maximo de 3)
     """
-    return _post(instancia, "message/sendButtons", {
-        "number": para_jid(numero),
-        "title": titulo,
-        "description": descricao,
-        "footer": rodape,
-        "buttons": [
-            {
-                "type": "reply",
-                "displayText": b["titulo"],
-                "id": str(b.get("id", i + 1)),
-            }
-            for i, b in enumerate(botoes[:3])
-        ],
-    })
+    return _registrar_enviado(
+        _post(instancia, "message/sendButtons", {
+            "number": para_jid(numero),
+            "title": titulo,
+            "description": descricao,
+            "footer": rodape,
+            "buttons": [
+                {
+                    "type": "reply",
+                    "displayText": b["titulo"],
+                    "id": str(b.get("id", i + 1)),
+                }
+                for i, b in enumerate(botoes[:3])
+            ],
+        })
+    )
 
 
 def enviar_lista(
@@ -111,14 +147,16 @@ def enviar_lista(
     secoes: [{"title": "Planos", "rows": [{"title": "Mensal", "description": "...",
               "rowId": "plano_mensal"}]}]
     """
-    return _post(instancia, "message/sendList", {
-        "number": para_jid(numero),
-        "title": titulo,
-        "description": descricao,
-        "buttonText": texto_botao,
-        "footerText": rodape,
-        "sections": secoes,
-    })
+    return _registrar_enviado(
+        _post(instancia, "message/sendList", {
+            "number": para_jid(numero),
+            "title": titulo,
+            "description": descricao,
+            "buttonText": texto_botao,
+            "footerText": rodape,
+            "sections": secoes,
+        })
+    )
 
 
 def enviar_arquivo(
@@ -130,26 +168,30 @@ def enviar_arquivo(
     tipo: str = "document",
 ) -> dict[str, Any]:
     """Envia midia. tipo: image | video | document | audio."""
-    return _post(instancia, "message/sendMedia", {
-        "number": para_jid(numero),
-        "mediatype": tipo,
-        "media": url_ou_base64,
-        "fileName": nome_arquivo,
-        "caption": legenda,
-    })
+    return _registrar_enviado(
+        _post(instancia, "message/sendMedia", {
+            "number": para_jid(numero),
+            "mediatype": tipo,
+            "media": url_ou_base64,
+            "fileName": nome_arquivo,
+            "caption": legenda,
+        })
+    )
 
 
 def enviar_localizacao(
     instancia: str, numero: str, nome: str, endereco: str, lat: float, lng: float
 ) -> dict[str, Any]:
     """Envia a localizacao da academia."""
-    return _post(instancia, "message/sendLocation", {
-        "number": para_jid(numero),
-        "name": nome,
-        "address": endereco,
-        "latitude": lat,
-        "longitude": lng,
-    })
+    return _registrar_enviado(
+        _post(instancia, "message/sendLocation", {
+            "number": para_jid(numero),
+            "name": nome,
+            "address": endereco,
+            "latitude": lat,
+            "longitude": lng,
+        })
+    )
 
 
 def marcar_como_lida(instancia: str, numero: str, message_id: str) -> dict[str, Any]:
