@@ -87,6 +87,17 @@ def receber(
     if jid.endswith("@g.us"):
         return JSONResponse({"status": "ignored", "reason": "grupo"}, status_code=200)
 
+    if jid.endswith("@lid"):
+        # WhatsApp manda um JID anonimo (@lid) em vez do numero em alguns
+        # casos (comum em quem usa Android). Desde que a Evolution/Baileys
+        # atualizou, o numero real vem em `remoteJidAlt` (ou `senderPn` em
+        # versoes mais antigas). Sem isso nao tem como responder.
+        jid_real = chave.get("remoteJidAlt") or chave.get("senderPn") or ""
+        if not jid_real:
+            logger.warning("JID @lid sem numero real (remoteJidAlt/senderPn); ignorando. jid=%s", jid)
+            return JSONResponse({"status": "ignored", "reason": "lid_sem_numero_real"}, status_code=200)
+        jid = jid_real
+
     numero = do_jid(jid)
 
     if chave.get("fromMe"):
