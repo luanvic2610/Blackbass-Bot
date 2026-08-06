@@ -117,7 +117,7 @@ def montar_menu(cliente: ClienteConfig, nome_contato: str = "") -> str:
         "3 - Endereco e funcionamento\n"
         "4 - Redes sociais\n"
         "5 - Loja Oficial \n"
-        "6 - Pagamento de mensalidade\n"
+        "6 - Pagamento de mensalidade/envio de comprovante\n"
         "7 - Falar com um atendente\n\n"
         "_Digite o numero da opcao desejada._"
     )
