@@ -43,6 +43,8 @@ OPCOES_MENU = {
     "3": "endereco",
     "4": "redes_sociais",
     "5": "atendente",
+    "6": "pagamento_pix",
+    "7": "atendente",
 }
 
 # Palavras que tambem levam a cada opcao.
@@ -52,6 +54,7 @@ ATALHOS = {
     "aula_experimental": {"experimental", "aula experimental", "teste", "visita", "agendar"},
     "redes_sociais": {"instagram", "insta", "rede social", "redes sociais", "facebook"},
     "atendente": {"atendente", "humano", "pessoa", "falar com alguem", "suporte"},
+    "pagamento_pix": {"pix", "pagamento", "mensalidade", "pagar", "boleto"},
 }
 
 SAIR = {"menu", "voltar", "sair", "cancelar", "0"}
@@ -91,6 +94,15 @@ def em_silencio(instancia: str, numero: str) -> bool:
     return bool(silencio_ate and agora_brt() < silencio_ate)
 
 
+def aguardando_comprovante_pix(instancia: str, numero: str) -> str | None:
+    """Se esse numero estiver no fluxo de pagamento esperando o comprovante,
+    devolve o nome do aluno guardado; caso contrario, None."""
+    estado = obter_estado(instancia, numero)
+    if estado["etapa"] != "pagamento_aguardando_comprovante":
+        return None
+    return estado["dados"].get("nome_aluno_pagamento")
+
+
 # --------------------------------------------------------------------------
 # Textos
 # --------------------------------------------------------------------------
@@ -104,7 +116,9 @@ def montar_menu(cliente: ClienteConfig, nome_contato: str = "") -> str:
         "2 - Agendar aula experimental\n"
         "3 - Endereco e funcionamento\n"
         "4 - Redes sociais\n"
-        "5 - Falar com um atendente\n\n"
+        "5 - Loja Oficial \n"
+        "6 - Pagamento de mensalidade\n"
+        "7 - Falar com um atendente\n\n"
         "_Digite o numero da opcao desejada._"
     )
 
@@ -151,6 +165,20 @@ def montar_redes_sociais(cliente: ClienteConfig) -> str:
         f"{negrito('Redes sociais')}\n\n"
         f"Instagram: {cliente.instagram_url}\n\n"
         "Digite *menu* para voltar."
+    )
+
+
+def montar_pagamento_pix(cliente: ClienteConfig, nome_aluno: str) -> str:
+    if not cliente.pix_chave:
+        return (
+            "Ainda nao temos uma chave PIX configurada por aqui. Digite *7* "
+            "para falar com um atendente e combinar o pagamento."
+        )
+    return (
+        f"Mensalidade de {negrito(nome_aluno)}.\n\n"
+        f"{negrito('Chave PIX')}\n{cliente.pix_chave}\n\n"
+        "Assim que pagar, *envie o comprovante aqui mesmo* (foto ou PDF) que eu "
+        "encaminho para a equipe.\n\nDigite *menu* para cancelar."
     )
 
 
@@ -201,6 +229,27 @@ def processar_mensagem(
         ativar_silencio(instancia, numero)
         return {"tipo": "ignorar"}
 
+    # --- Fluxo de pagamento: aguardando o nome do aluno ---
+    if estado["etapa"] == "pagamento_aguardando_nome":
+        nome_aluno = texto.strip()
+        estado["dados"]["nome_aluno_pagamento"] = nome_aluno
+        definir_etapa(instancia, numero, "pagamento_aguardando_comprovante")
+        return {"tipo": "texto", "texto": montar_pagamento_pix(cliente, nome_aluno)}
+
+    # --- Fluxo de pagamento: aguardando o comprovante (midia, tratada no
+    # webhook antes de chegar aqui - se veio texto e porque ainda nao mandou
+    # o arquivo).
+    if estado["etapa"] == "pagamento_aguardando_comprovante":
+        nome_aluno = estado["dados"].get("nome_aluno_pagamento", "")
+        return {
+            "tipo": "texto",
+            "texto": (
+                f"Ainda estou aguardando o {negrito('comprovante')} (foto ou PDF) do "
+                f"pagamento de {negrito(nome_aluno)}. Envie o arquivo por aqui, ou "
+                "digite *menu* para cancelar."
+            ),
+        }
+
     # --- Primeira interacao ---
     if estado["etapa"] == "inicio":
         definir_etapa(instancia, numero, "menu")
@@ -222,6 +271,16 @@ def processar_mensagem(
 
     if intencao == "aula_experimental":
         return {"tipo": "texto", "texto": montar_aula_experimental(cliente)}
+
+    if intencao == "pagamento_pix":
+        definir_etapa(instancia, numero, "pagamento_aguardando_nome")
+        return {
+            "tipo": "texto",
+            "texto": (
+                "Para eu gerar o comprovante certo, me diga o "
+                f"{negrito('nome completo do aluno(a)')} para quem e essa mensalidade:"
+            ),
+        }
 
     if intencao == "atendente":
         definir_etapa(instancia, numero, "atendimento_humano")

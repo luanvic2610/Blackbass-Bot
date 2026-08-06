@@ -32,6 +32,83 @@ def _extrair_texto(mensagem: dict[str, Any]) -> str:
     ).strip()
 
 
+def _extrair_midia(mensagem: dict[str, Any]) -> dict[str, Any] | None:
+    """Detecta se a mensagem e uma imagem/documento (usado no fluxo de comprovante
+    de pagamento). Diferente de `_extrair_texto`, aqui a legenda pode estar vazia."""
+    if not isinstance(mensagem, dict):
+        return None
+    imagem = mensagem.get("imageMessage")
+    if isinstance(imagem, dict):
+        return {"tipo": "image", "info": imagem}
+    documento = mensagem.get("documentMessage")
+    if isinstance(documento, dict):
+        return {"tipo": "document", "info": documento}
+    doc_legenda = (mensagem.get("documentWithCaptionMessage") or {}).get("message", {}).get("documentMessage")
+    if isinstance(doc_legenda, dict):
+        return {"tipo": "document", "info": doc_legenda}
+    return None
+
+
+def _receber_comprovante_pix(
+    instancia: str,
+    numero: str,
+    nome_contato: str,
+    cliente: Any,
+    chave_mensagem: dict[str, Any],
+    midia: dict[str, Any],
+    nome_aluno: str,
+) -> JSONResponse:
+    """Baixa o comprovante recebido e encaminha por e-mail para a equipe do cliente."""
+    if chave_mensagem.get("id"):
+        try:
+            evolution.marcar_como_lida(instancia, numero, chave_mensagem["id"])
+        except evolution.EvolutionError as exc:
+            logger.debug("Nao consegui marcar comprovante como lido: %s", exc)
+
+    info = midia["info"]
+    nome_arquivo = info.get("fileName") or ("comprovante.jpg" if midia["tipo"] == "image" else "comprovante.pdf")
+
+    resultado = evolution.obter_midia_base64(instancia, chave_mensagem)
+    base64_midia = resultado.get("base64")
+    if not base64_midia:
+        logger.error("Resposta da Evolution sem base64 para comprovante de %s.", numero)
+        evolution.enviar_texto(
+            instancia, numero,
+            "Nao consegui processar o arquivo. Pode tentar enviar de novo?",
+        )
+        return JSONResponse({"status": "error", "detail": "sem_base64"}, status_code=200)
+
+    mimetype = resultado.get("mimetype") or info.get("mimetype") or "application/octet-stream"
+
+    try:
+        notificacoes.enviar_email_comprovante(
+            destinatario=cliente.email_equipe,
+            cliente_nome=cliente.nome,
+            nome_aluno=nome_aluno,
+            contato_nome=nome_contato,
+            contato_numero=numero,
+            anexo_base64=base64_midia,
+            anexo_mimetype=mimetype,
+            anexo_nome=nome_arquivo,
+        )
+    except notificacoes.NotificacaoError as exc:
+        logger.error("Falha ao encaminhar comprovante por e-mail (%s): %s", numero, exc)
+        evolution.enviar_texto(
+            instancia, numero,
+            "Recebi o comprovante, mas tive um problema para encaminhar para a equipe. "
+            "Vou avisar por outro canal.",
+        )
+        return JSONResponse({"status": "error", "detail": str(exc)}, status_code=200)
+
+    bot_logic.limpar_estado(instancia, numero)
+    evolution.enviar_texto(
+        instancia, numero,
+        f"Recebido! Encaminhei o comprovante de {nome_aluno} para a equipe.\n\n"
+        "Digite *menu* para voltar.",
+    )
+    return JSONResponse({"status": "ok", "acao": "comprovante_encaminhado"}, status_code=200)
+
+
 def _token_valido(x_webhook_token: str | None, token: str | None) -> bool:
     if not settings.WEBHOOK_TOKEN:
         return True  # validacao desativada
@@ -111,10 +188,26 @@ def receber(
             logger.info("Equipe respondeu manualmente para %s; bot em silencio.", numero)
         return JSONResponse({"status": "ignored", "reason": "fromMe"}, status_code=200)
 
-    texto = _extrair_texto(dados.get("message") or {})
+    mensagem = dados.get("message") or {}
+    texto = _extrair_texto(mensagem)
+    midia = _extrair_midia(mensagem)
     nome = dados.get("pushName", "") or ""
 
-    if not numero or not texto:
+    if not numero:
+        return JSONResponse({"status": "ignored", "reason": "sem numero"}, status_code=200)
+
+    nome_aluno_pix = midia and bot_logic.aguardando_comprovante_pix(instancia, numero)
+    if midia and nome_aluno_pix:
+        try:
+            return _receber_comprovante_pix(instancia, numero, nome, cliente, chave, midia, nome_aluno_pix)
+        except evolution.EvolutionError as exc:
+            logger.error("Erro ao processar comprovante de %s: %s", numero, exc)
+            return JSONResponse({"status": "error", "detail": str(exc)}, status_code=200)
+        except Exception:  # noqa: BLE001
+            logger.exception("Erro inesperado processando comprovante de %s.", numero)
+            return JSONResponse({"status": "error"}, status_code=200)
+
+    if not texto:
         return JSONResponse({"status": "ignored", "reason": "sem texto"}, status_code=200)
 
     logger.info("Mensagem de %s (%s) para %s: %s", nome, numero, instancia, texto)

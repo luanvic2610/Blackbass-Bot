@@ -43,6 +43,8 @@ _INSTRUCOES = (
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_bot_clientes_ativo ON bot.clientes (ativo);",
+    # v1: chave PIX de cada cliente, usada no fluxo de pagamento de mensalidade do bot.
+    "ALTER TABLE bot.clientes ADD COLUMN IF NOT EXISTS pix_chave TEXT NOT NULL DEFAULT '';",
 )
 
 

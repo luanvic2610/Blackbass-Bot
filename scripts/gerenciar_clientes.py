@@ -27,6 +27,7 @@ from src.utils.formatters import DIAS_SEMANA  # noqa: E402
 CAMPOS_TEXTO = (
     "nome", "telefone", "endereco", "horario_funcionamento",
     "google_maps_url", "instagram_url", "form_aula_experimental_url", "email_equipe",
+    "pix_chave",
 )
 
 
@@ -49,6 +50,7 @@ def _adicionar_argumentos_campos(parser: argparse.ArgumentParser, obrigatorios: 
     parser.add_argument("--instagram-url", dest="instagram_url", default=None)
     parser.add_argument("--form-url", dest="form_aula_experimental_url", default=None)
     parser.add_argument("--email-equipe", dest="email_equipe", default=None)
+    parser.add_argument("--pix-chave", dest="pix_chave", default=None)
 
 
 def cmd_adicionar(args: argparse.Namespace) -> None:
@@ -59,8 +61,8 @@ def cmd_adicionar(args: argparse.Namespace) -> None:
                     """
                     INSERT INTO bot.clientes (instancia, nome, telefone, endereco,
                         horario_funcionamento, google_maps_url, instagram_url,
-                        form_aula_experimental_url, email_equipe)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        form_aula_experimental_url, email_equipe, pix_chave)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         args.instancia,
@@ -72,6 +74,7 @@ def cmd_adicionar(args: argparse.Namespace) -> None:
                         args.instagram_url or "",
                         args.form_aula_experimental_url or "",
                         args.email_equipe or "",
+                        args.pix_chave or "",
                     ),
                 )
             except errors.UniqueViolation:

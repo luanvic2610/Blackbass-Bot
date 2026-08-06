@@ -36,6 +36,7 @@ class ClienteConfig:
     instagram_url: str
     form_aula_experimental_url: str
     email_equipe: str
+    pix_chave: str
     grade_horarios: dict[str, list[str]]
     ativo: bool
 
@@ -51,6 +52,7 @@ def _linha_para_cliente(linha: dict[str, Any]) -> ClienteConfig:
         instagram_url=linha["instagram_url"],
         form_aula_experimental_url=linha["form_aula_experimental_url"],
         email_equipe=linha["email_equipe"],
+        pix_chave=linha["pix_chave"],
         grade_horarios=linha["grade_horarios"] or {},
         ativo=linha["ativo"],
     )

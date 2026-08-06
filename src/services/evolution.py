@@ -194,6 +194,15 @@ def enviar_localizacao(
     )
 
 
+def obter_midia_base64(instancia: str, chave_mensagem: dict[str, Any]) -> dict[str, Any]:
+    """Busca o conteudo (base64) de uma midia recebida, a partir da `key` da mensagem
+    tal como veio no webhook (remoteJid/id/fromMe)."""
+    return _post(instancia, "chat/getBase64FromMediaMessage", {
+        "message": {"key": chave_mensagem},
+        "convertToMp4": False,
+    })
+
+
 def marcar_como_lida(instancia: str, numero: str, message_id: str) -> dict[str, Any]:
     """Marca a mensagem recebida como lida."""
     return _post(instancia, "chat/markMessageAsRead", {

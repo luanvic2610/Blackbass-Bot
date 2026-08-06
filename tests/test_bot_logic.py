@@ -6,7 +6,7 @@ from src.services import bot_logic
 from src.services.clientes import ClienteConfig
 
 
-def _cliente(instancia: str, nome: str, endereco: str) -> ClienteConfig:
+def _cliente(instancia: str, nome: str, endereco: str, pix_chave: str = "chave-pix-exemplo") -> ClienteConfig:
     return ClienteConfig(
         instancia=instancia,
         nome=nome,
@@ -17,6 +17,7 @@ def _cliente(instancia: str, nome: str, endereco: str) -> ClienteConfig:
         instagram_url="https://instagram.com/" + instancia,
         form_aula_experimental_url="https://forms.example.com/" + instancia,
         email_equipe=f"equipe@{instancia}.com",
+        pix_chave=pix_chave,
         grade_horarios={"segunda-feira": [f"09:00 Aula da {nome}"]},
         ativo=True,
     )
@@ -69,3 +70,29 @@ def test_silencio_nao_vaza_entre_clientes_com_mesmo_numero():
     resposta_b = bot_logic.processar_mensagem("cliente_b", numero, "3", cliente_b)
     assert resposta_b["tipo"] == "texto"
     assert "Rua B, 2" in resposta_b["texto"]
+
+
+def test_fluxo_pagamento_pix_ate_aguardar_comprovante():
+    cliente = _cliente("cliente_a", "Academia A", "Rua A, 1", pix_chave="12345-chave-pix")
+    numero = "5511999990000"
+
+    resposta_menu = bot_logic.processar_mensagem("cliente_a", numero, "6", cliente)
+    assert resposta_menu["tipo"] == "texto"
+    assert "nome" in resposta_menu["texto"].lower()
+    assert bot_logic.aguardando_comprovante_pix("cliente_a", numero) is None
+
+    resposta_pix = bot_logic.processar_mensagem("cliente_a", numero, "Fulano de Tal", cliente)
+    assert resposta_pix["tipo"] == "texto"
+    assert "12345-chave-pix" in resposta_pix["texto"]
+    assert bot_logic.aguardando_comprovante_pix("cliente_a", numero) == "Fulano de Tal"
+
+    # Enquanto so manda texto (nao o comprovante), o bot cobra o arquivo.
+    resposta_lembrete = bot_logic.processar_mensagem("cliente_a", numero, "ja paguei", cliente)
+    assert resposta_lembrete["tipo"] == "texto"
+    assert "Fulano de Tal" in resposta_lembrete["texto"]
+    assert bot_logic.aguardando_comprovante_pix("cliente_a", numero) == "Fulano de Tal"
+
+    # "menu" cancela o fluxo em qualquer etapa.
+    resposta_cancelar = bot_logic.processar_mensagem("cliente_a", numero, "menu", cliente)
+    assert resposta_cancelar["tipo"] == "texto"
+    assert bot_logic.aguardando_comprovante_pix("cliente_a", numero) is None
