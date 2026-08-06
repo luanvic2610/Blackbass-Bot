@@ -42,7 +42,7 @@ OPCOES_MENU = {
     "2": "aula_experimental",
     "3": "endereco",
     "4": "redes_sociais",
-    "5": "atendente",
+    "5": "loja_oficial",
     "6": "pagamento_pix",
     "7": "atendente",
 }
@@ -53,6 +53,7 @@ ATALHOS = {
     "endereco": {"endereco", "onde", "local", "localizacao", "mapa", "como chego"},
     "aula_experimental": {"experimental", "aula experimental", "teste", "visita", "agendar"},
     "redes_sociais": {"instagram", "insta", "rede social", "redes sociais", "facebook"},
+    "loja_oficial": {"loja", "loja oficial", "comprar", "produtos", "uniforme", "camiseta"},
     "atendente": {"atendente", "humano", "pessoa", "falar com alguem", "suporte"},
     "pagamento_pix": {"pix", "pagamento", "mensalidade", "pagar", "boleto"},
 }
@@ -168,6 +169,22 @@ def montar_redes_sociais(cliente: ClienteConfig) -> str:
     )
 
 
+def montar_loja_oficial(cliente: ClienteConfig) -> str:
+    if not cliente.loja_url:
+        return (
+            "Nossa loja oficial ainda nao esta disponivel por aqui. Digite *menu* "
+            "para voltar."
+        )
+    cupom = (
+        f"\n\nUse o cupom {negrito(cliente.loja_cupom)} e ganhe *10% de desconto*!"
+        if cliente.loja_cupom else ""
+    )
+    return (
+        f"{negrito('Loja Oficial')}\n\n{cliente.loja_url}{cupom}\n\n"
+        "Digite *menu* para voltar."
+    )
+
+
 def montar_pagamento_pix(cliente: ClienteConfig, nome_aluno: str) -> str:
     if not cliente.pix_chave:
         return (
@@ -271,6 +288,9 @@ def processar_mensagem(
 
     if intencao == "aula_experimental":
         return {"tipo": "texto", "texto": montar_aula_experimental(cliente)}
+
+    if intencao == "loja_oficial":
+        return {"tipo": "texto", "texto": montar_loja_oficial(cliente)}
 
     if intencao == "pagamento_pix":
         definir_etapa(instancia, numero, "pagamento_aguardando_nome")

@@ -130,7 +130,8 @@ docker compose exec bot python scripts/gerenciar_clientes.py adicionar \
   --instancia academia-x --nome "Academia X" \
   --telefone "+55 11 90000-0000" --endereco "Rua Exemplo, 123" \
   --email-equipe equipe@academiax.com.br \
-  --pix-chave "00.000.000/0001-00"
+  --pix-chave "00.000.000/0001-00" \
+  --loja-url "https://loja.academiax.com.br" --loja-cupom "ACADEMIAX10"
 
 docker compose exec bot python scripts/gerenciar_clientes.py definir-grade \
   --instancia academia-x --arquivo grade-academia-x.json

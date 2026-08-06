@@ -6,7 +6,14 @@ from src.services import bot_logic
 from src.services.clientes import ClienteConfig
 
 
-def _cliente(instancia: str, nome: str, endereco: str, pix_chave: str = "chave-pix-exemplo") -> ClienteConfig:
+def _cliente(
+    instancia: str,
+    nome: str,
+    endereco: str,
+    pix_chave: str = "chave-pix-exemplo",
+    loja_url: str = "",
+    loja_cupom: str = "",
+) -> ClienteConfig:
     return ClienteConfig(
         instancia=instancia,
         nome=nome,
@@ -18,6 +25,8 @@ def _cliente(instancia: str, nome: str, endereco: str, pix_chave: str = "chave-p
         form_aula_experimental_url="https://forms.example.com/" + instancia,
         email_equipe=f"equipe@{instancia}.com",
         pix_chave=pix_chave,
+        loja_url=loja_url,
+        loja_cupom=loja_cupom,
         grade_horarios={"segunda-feira": [f"09:00 Aula da {nome}"]},
         ativo=True,
     )
@@ -61,7 +70,7 @@ def test_silencio_nao_vaza_entre_clientes_com_mesmo_numero():
     cliente_b = _cliente("cliente_b", "Academia B", "Rua B, 2")
     numero = "5511999990000"
 
-    resposta = bot_logic.processar_mensagem("cliente_a", numero, "5", cliente_a)
+    resposta = bot_logic.processar_mensagem("cliente_a", numero, "7", cliente_a)
     assert resposta["tipo"] == "encaminhar"
     assert bot_logic.em_silencio("cliente_a", numero) is True
 
@@ -70,6 +79,20 @@ def test_silencio_nao_vaza_entre_clientes_com_mesmo_numero():
     resposta_b = bot_logic.processar_mensagem("cliente_b", numero, "3", cliente_b)
     assert resposta_b["tipo"] == "texto"
     assert "Rua B, 2" in resposta_b["texto"]
+
+
+def test_loja_oficial_mostra_link_e_cupom():
+    cliente = _cliente(
+        "cliente_a", "Academia A", "Rua A, 1",
+        loja_url="https://loja.example.com", loja_cupom="DESCONTO10",
+    )
+    numero = "5511999990000"
+
+    resposta = bot_logic.processar_mensagem("cliente_a", numero, "5", cliente)
+    assert resposta["tipo"] == "texto"
+    assert "https://loja.example.com" in resposta["texto"]
+    assert "DESCONTO10" in resposta["texto"]
+    assert "10%" in resposta["texto"]
 
 
 def test_fluxo_pagamento_pix_ate_aguardar_comprovante():
